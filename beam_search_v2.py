@@ -1,66 +1,77 @@
-import heapq
 import sys
 
-def solve_beam_pure_depot(N, K, d_matrix, beam_width=150, branch_limit=5):
-    initial_routes = [[0] for _ in range(K)]
-    initial_lengths = [0] * K
-    initial_unvisited = list(range(1, N + 1))
+def read_input():
+    data = list(map(int, sys.stdin.buffer.read().split()))
+    if not data:
+        return 0, 0, []
     
-    beam = [(0, initial_routes, initial_lengths, initial_unvisited)]
+    n = data[0]
+    k = data[1]
     
-    while beam[0][3]:
-        candidates = []
-        for current_max, routes, lengths, unvisited in beam:
-            
-            target_idx = 0
-            min_proj_len = float('inf')
-            for i in range(K):
-                proj_l = lengths[i] + d_matrix[routes[i][-1]][0]
-                if proj_l < min_proj_len:
-                    min_proj_len = proj_l
-                    target_idx = i
-                    
-            last_node = routes[target_idx][-1]
-            
-            unv_sorted = sorted(unvisited, key=lambda x: d_matrix[last_node][x])
-            
-            for next_node in unv_sorted[:branch_limit]:
-                new_routes = [r[:] for r in routes]
-                new_lengths = lengths[:]
-                
-                new_routes[target_idx].append(next_node)
-                new_lengths[target_idx] += d_matrix[last_node][next_node]
-                
-                new_unvisited = [n for n in unvisited if n != next_node]
+    mat_size = n + 1
+    dist = []
+    pos = 2
+    for _ in range(mat_size):
+        dist.append(data[pos : pos + mat_size])
+        pos += mat_size
+        
+    return n, k, dist
+
+def solve_beam(n, k, dist):
+    BW = 15 
+    
+    nodes = list(range(1, n + 1))
+    nodes.sort(key=lambda x: dist[0][x], reverse=True)
+    
+    init_routes = [[0] for _ in range(k)]
+    init_lengths = [0] * k
+    beam = [(0, 0, init_routes, init_lengths)]
+    
+    for node in nodes:
+        next_beam = []
+        for _, _, routes, lengths in beam:
+            for v in range(k):
+                prev_node = routes[v][-1]
+                added_d = dist[prev_node][node]
+                new_len_v = lengths[v] + added_d
                 
                 new_max = 0
-                for i in range(K):
-                    l = new_lengths[i] + d_matrix[new_routes[i][-1]][0]
-                    if l > new_max:
-                        new_max = l
+                new_tot = 0
                 
-                candidates.append((new_max, new_routes, new_lengths, new_unvisited))
+                for i in range(k):
+                    if i == v:
+                        c = new_len_v + dist[node][0]
+                    else:
+                        c = lengths[i] + dist[routes[i][-1]][0]
+                        
+                    if c > new_max:
+                        new_max = c
+                    new_tot += c
+                
+                new_routes = [r[:] for r in routes]
+                new_routes[v].append(node)
+                new_lengths = lengths[:]
+                new_lengths[v] = new_len_v
+                
+                next_beam.append((new_max, new_tot, new_routes, new_lengths))
         
-        beam = heapq.nsmallest(beam_width, candidates, key=lambda x: x[0])
+        next_beam.sort(key=lambda x: (x[0], x[1]))
+        beam = next_beam[:BW]
         
-    final_solution = beam[0][1]
-    
-    print(K)
-    for route in final_solution:
-        print(len(route))
-        print(*(route))
+    return beam[0][2]
+
+def print_res(routes):
+    out = [str(len(routes))]
+    for r in routes:
+        out.append(str(len(r)))
+        out.append(" ".join(map(str, r)))
+    sys.stdout.write("\n".join(out) + "\n")
+
+def main():
+    n, k, dist = read_input()
+    if n > 0:
+        ans = solve_beam(n, k, dist)
+        print_res(ans)
 
 if __name__ == "__main__":
-    input_data = sys.stdin.read().split()
-    if input_data:
-        N = int(input_data[0])
-        K = int(input_data[1])
-        d_matrix = []
-        idx = 2
-        for i in range(N + 1):
-            row = []
-            for j in range(N + 1):
-                row.append(int(input_data[idx]))
-                idx += 1
-            d_matrix.append(row)
-        solve_beam_pure_depot(N, K, d_matrix)
+    main()
