@@ -1,146 +1,209 @@
 import sys
 
 def read_input():
-    numbers = list(map(int, sys.stdin.buffer.read().split()))
-    if not numbers:
-        return 0, 0, []
+    data = list(map(int, sys.stdin.buffer.read().split()))
+    if not data: return 0, 0, []
     
-    number_of_points = numbers[0]
-    number_of_postmen = numbers[1]
+    n = data[0]
+    k = data[1]
     
-    matrix_size = number_of_points + 1
-    distances = []
-    position = 2
-    for _ in range(matrix_size):
-        distances.append(numbers[position : position + matrix_size])
-        position += matrix_size
+    dist = []
+    pos = 2
+    mat_size = n + 1
+    for _ in range(mat_size):
+        dist.append(data[pos : pos + mat_size])
+        pos += mat_size
+
+    for i in range(n+1):
+        dist[i][0] = 0
         
-    return number_of_points, number_of_postmen, distances
+    return n, k, dist
 
-def naive_initialization(number_of_points, number_of_postmen, distances):
-    routes = [[0] for _ in range(number_of_postmen)]
-    lengths = [0] * number_of_postmen
+def init_routes(n, k, dist):
+    routes = [[0] for _ in range(k)]
+    route_lengths = [0] * k
+    unvisited = list(range(1, n + 1))
     
-    for i in range(1, number_of_points + 1):
-        target_k = (i - 1) % number_of_postmen
-        last_node = routes[target_k][-1]
-        routes[target_k].append(i)
-        lengths[target_k] += distances[last_node][i]
+    while unvisited:
+        best_route = 0
+        best_idx = 0
+        best_node = unvisited[0]
+        best_val = float('inf')
         
-    return routes, lengths
+        for v in range(k):
+            last_node = routes[v][-1]
+            cur_len = route_lengths[v]
+            
+            for idx, node in enumerate(unvisited):
+                val = cur_len + dist[last_node][node]
+                if val < best_val:
+                    best_val = val
+                    best_route = v
+                    best_idx = idx
+                    best_node = node
+                    
+        routes[best_route].append(best_node)
+        route_lengths[best_route] += dist[routes[best_route][-2]][best_node]
+        unvisited.pop(best_idx)
+        
+    return [r[1:] for r in routes]
 
-def get_system_costs(routes, lengths, distances, number_of_postmen):
-    costs = [0] * number_of_postmen
-    max_cost = 0
-    max_k = -1
-    for k in range(number_of_postmen):
-        costs[k] = lengths[k] + distances[routes[k][-1]][0]
-        if costs[k] > max_cost:
-            max_cost = costs[k]
-            max_k = k
-    return costs, max_cost, max_k
-
-def solve_hill_climbing(number_of_points, number_of_postmen, distances):
-    routes, lengths = naive_initialization(number_of_points, number_of_postmen, distances)
+def solve(n, k, dist):
+    routes = init_routes(n, k, dist)
     
+    lengths = [0] * k
+    for v in range(k):
+        if routes[v]:
+            c = dist[0][routes[v][0]]
+            for i in range(len(routes[v])-1):
+                c += dist[routes[v][i]][routes[v][i+1]]
+            lengths[v] = c
+
+    def get_cost(v):
+        if not routes[v]: return 0
+        return lengths[v] + dist[routes[v][-1]][0]
+
     improved = True
     while improved:
         improved = False
-        costs, current_max, max_k = get_system_costs(routes, lengths, distances, number_of_postmen)
+        costs = [get_cost(v) for v in range(k)]
+        max_c = max(costs)
+        sum_c = sum(costs)
         
-        for i in range(1, len(routes[max_k])):
-            node = routes[max_k][i]
-            prev_max = routes[max_k][i-1]
-            next_max = routes[max_k][i+1] if i < len(routes[max_k]) - 1 else 0
-            
-            delta_max = distances[prev_max][next_max] - (distances[prev_max][node] + distances[node][next_max])
-            new_len_max = lengths[max_k] + delta_max
-            last_max = routes[max_k][-1] if i < len(routes[max_k]) - 1 else routes[max_k][-2]
-            new_cost_max = new_len_max + distances[last_max][0]
-            
-            for k2 in range(number_of_postmen):
-                if k2 == max_k: continue
-                
-                for j in range(1, len(routes[k2]) + 1):
-                    prev_2 = routes[k2][j-1]
-                    next_2 = routes[k2][j] if j < len(routes[k2]) else 0
+        for v in range(k):
+            r = routes[v]
+            sz = len(r)
+            if sz < 2: continue
+            for i in range(sz - 1):
+                for j in range(i + 1, sz):
+                    prev_i = r[i-1] if i > 0 else 0
+                    node_i = r[i]
+                    node_j = r[j]
+                    next_j = r[j+1] if j < sz - 1 else 0
                     
-                    delta_2 = distances[prev_2][node] + distances[node][next_2] - distances[prev_2][next_2]
-                    new_len_2 = lengths[k2] + delta_2
-                    last_2 = routes[k2][-1] if j < len(routes[k2]) else node
-                    new_cost_2 = new_len_2 + distances[last_2][0]
+                    delta = (dist[prev_i][node_j] + dist[node_i][next_j]) - \
+                            (dist[prev_i][node_i] + dist[node_j][next_j])
                     
-                    if new_cost_max < current_max and new_cost_2 < current_max:
-                      
-                        proposed_max = max(new_cost_max, new_cost_2)
-                        for x in range(number_of_postmen):
-                            if x != max_k and x != k2 and costs[x] > proposed_max:
-                                proposed_max = costs[x]
-                        
-                        if proposed_max < current_max:
-                            routes[max_k].pop(i)
-                            routes[k2].insert(j, node)
-                            lengths[max_k] = new_len_max
-                            lengths[k2] = new_len_2
-                            improved = True
-                            break
+                    if delta < 0:
+                        r[i:j+1] = reversed(r[i:j+1])
+                        lengths[v] += delta
+                        costs[v] += delta
+                        max_c = max(costs)
+                        sum_c += delta
+                        improved = True
+                        break
                 if improved: break
             if improved: break
-            
         if improved: continue
 
-        for i in range(1, len(routes[max_k])):
-            node_max = routes[max_k][i]
-            prev_max = routes[max_k][i-1]
-            next_max = routes[max_k][i+1] if i < len(routes[max_k]) - 1 else 0
+        bottleneck_v = costs.index(max_c)
+        target_vehicles = list(range(k))
+        target_vehicles.remove(bottleneck_v)
+        target_vehicles.sort(key=lambda x: costs[x])
+        
+        b_route = routes[bottleneck_v]
+        b_sz = len(b_route)
+        
+        for i in range(b_sz):
+            node = b_route[i]
+            prev_b = b_route[i-1] if i > 0 else 0
+            next_b = b_route[i+1] if i < b_sz - 1 else 0
             
-            for k2 in range(number_of_postmen):
-                if k2 == max_k: continue
+            delta_b = dist[prev_b][next_b] - (dist[prev_b][node] + dist[node][next_b])
+            new_cost_b = costs[bottleneck_v] + delta_b
+            
+            for v in target_vehicles:
+                t_route = routes[v]
+                t_sz = len(t_route)
                 
-                for j in range(1, len(routes[k2])):
-                    node_2 = routes[k2][j]
-                    prev_2 = routes[k2][j-1]
-                    next_2 = routes[k2][j+1] if j < len(routes[k2]) - 1 else 0
+                for j in range(t_sz + 1):
+                    prev_t = t_route[j-1] if j > 0 else 0
+                    next_t = t_route[j] if j < t_sz else 0
                     
-                    delta_max = (distances[prev_max][node_2] + distances[node_2][next_max]) - (distances[prev_max][node_max] + distances[node_max][next_max])
-                    new_len_max = lengths[max_k] + delta_max
-                    last_max = routes[max_k][-1] if i < len(routes[max_k]) - 1 else node_2
-                    new_cost_max = new_len_max + distances[last_max][0]
+                    delta_t = dist[prev_t][node] + dist[node][next_t] - dist[prev_t][next_t]
+                    new_cost_t = costs[v] + delta_t
                     
-                    delta_2 = (distances[prev_2][node_max] + distances[node_max][next_2]) - (distances[prev_2][node_2] + distances[node_2][next_2])
-                    new_len_2 = lengths[k2] + delta_2
-                    last_2 = routes[k2][-1] if j < len(routes[k2]) - 1 else node_max
-                    new_cost_2 = new_len_2 + distances[last_2][0]
+                    temp_max = 0
+                    for x in range(k):
+                        if x == bottleneck_v: c_x = new_cost_b
+                        elif x == v: c_x = new_cost_t
+                        else: c_x = costs[x]
+                        if c_x > temp_max: temp_max = c_x
+                        
+                    new_sum_c = sum_c + delta_b + delta_t
                     
-                    if new_cost_max < current_max and new_cost_2 < current_max:
-                        proposed_max = max(new_cost_max, new_cost_2)
-                        for x in range(number_of_postmen):
-                            if x != max_k and x != k2 and costs[x] > proposed_max:
-                                proposed_max = costs[x]
-                                
-                        if proposed_max < current_max:
-                            routes[max_k][i], routes[k2][j] = routes[k2][j], routes[max_k][i]
-                            lengths[max_k] = new_len_max
-                            lengths[k2] = new_len_2
-                            improved = True
-                            break
+                    if temp_max < max_c or (temp_max == max_c and new_sum_c < sum_c):
+                        t_route.insert(j, node)
+                        b_route.pop(i)
+                        lengths[bottleneck_v] += delta_b
+                        lengths[v] += delta_t
+                        costs[bottleneck_v] = new_cost_b
+                        costs[v] = new_cost_t
+                        improved = True
+                        break
+                if improved: break
+            if improved: break
+        if improved: continue
+
+        for i in range(b_sz):
+            node_b = b_route[i]
+            prev_b = b_route[i-1] if i > 0 else 0
+            next_b = b_route[i+1] if i < b_sz - 1 else 0
+            
+            for v in target_vehicles:
+                t_route = routes[v]
+                t_sz = len(t_route)
+                
+                for j in range(t_sz):
+                    node_t = t_route[j]
+                    prev_t = t_route[j-1] if j > 0 else 0
+                    next_t = t_route[j+1] if j < t_sz - 1 else 0
+                    
+                    delta_b = (dist[prev_b][node_t] + dist[node_t][next_b]) - (dist[prev_b][node_b] + dist[node_b][next_b])
+                    delta_t = (dist[prev_t][node_b] + dist[node_b][next_t]) - (dist[prev_t][node_t] + dist[node_t][next_t])
+                    
+                    new_cost_b = costs[bottleneck_v] + delta_b
+                    new_cost_t = costs[v] + delta_t
+                    
+                    temp_max = 0
+                    for x in range(k):
+                        if x == bottleneck_v: c_x = new_cost_b
+                        elif x == v: c_x = new_cost_t
+                        else: c_x = costs[x]
+                        if c_x > temp_max: temp_max = c_x
+                        
+                    new_sum_c = sum_c + delta_b + delta_t
+                    
+                    if temp_max < max_c or (temp_max == max_c and new_sum_c < sum_c):
+                        b_route[i] = node_t
+                        t_route[j] = node_b
+                        lengths[bottleneck_v] += delta_b
+                        lengths[v] += delta_t
+                        costs[bottleneck_v] = new_cost_b
+                        costs[v] = new_cost_t
+                        improved = True
+                        break
                 if improved: break
             if improved: break
 
     return routes
 
-def print_solution(routes):
-    output_lines = [str(len(routes))]
-    for route in routes:
-        output_lines.append(str(len(route)))
-        output_lines.append(" ".join(map(str, route)))
-    sys.stdout.write("\n".join(output_lines) + "\n")
+def print_res(routes):
+    out = [str(len(routes))]
+    for r in routes:
+        final_r = [0] + r
+        out.append(str(len(final_r)))
+        out.append(" ".join(map(str, final_r)))
+    sys.stdout.write("\n".join(out) + "\n")
 
 def main():
     n, k, dist = read_input()
     if n > 0:
-        routes = solve_hill_climbing(n, k, dist)
-        print_solution(routes)
+        ans = solve(n, k, dist)
+        print_res(ans)
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
